@@ -16,7 +16,11 @@ class Canary:
         tables = self.client.materialize.get_tables()
         for table in tables:
             num_rows = self.client.materialize.get_annotation_count(table)
-            offset = random.randint(0, num_rows - config.NUM_SYNAPSES)
+            # make the offset something that is not too close to the end
+            max_offset = max(num_rows - config.NUM_SYNAPSES, 0)
+            print(max_offset)
+            offset = random.randint(0, max_offset)
+
             try:
                 df = self.client.materialize.query_table(
                     table, offset=offset, limit=config.NUM_SYNAPSES

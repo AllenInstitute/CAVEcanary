@@ -1,14 +1,12 @@
 from canary import Canary
-import config
-import time
 
 
-def main():
-    canary = Canary()
-    while True:
-        canary.check_random_annotations()
-        time.sleep(config.CHECK_INTERVAL_SECONDS)
+# main.py
+import os
+from pathlib import Path
 
+from canary import Canary
 
 if __name__ == "__main__":
-    main()
+    canary = Canary()
+    canary.run()

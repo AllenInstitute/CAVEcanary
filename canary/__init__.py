@@ -1,28 +1,55 @@
 __version__ = "0.1.0"
-
+import time
 import random
 from caveclient import CAVEclient
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-import config
+import configparser
+import os
 
 
 class Canary:
-    def __init__(self):
-        self.client = CAVEclient(config.DATASTACK_NAME)
-        self.slack_client = WebClient(token=config.SLACK_API_TOKEN)
+    def __init__(self, client=None):
+
+        self.config = configparser.ConfigParser()
+        config_file = os.environ.get("CAVECANARY_CONFIG_FILE", "config.cfg")
+        self.config.read(config_file)
+
+        self.datastack_name = self.config.get("Settings", "DATASTACK_NAME")
+        self.server_address = self.config.get(
+            "Settings", "SERVER_ADDRESS", fallback=None
+        )
+        self.slack_api_token = self.config.get("Settings", "SLACK_API_TOKEN")
+        self.slack_channel = self.config.get("Settings", "SLACK_CHANNEL")
+        self.check_interval = self.config.getint("Settings", "CHECK_INTERVAL")
+        self.num_test_annotations = self.config.getint(
+            "Settings", "NUM_TEST_ANNOTATIONS"
+        )
+        if client is None:
+            self.client = CAVEclient(
+                self.datastack_name, server_address=self.server_address
+            )
+        else:
+            self.client = client
+
+        self.slack_client = WebClient(token=self.slack_api_token)
+
+    def run(self):
+        self.check_random_annotations()
+        time.sleep(self.check_interval)
 
     def check_random_annotations(self):
+        print(self.client)
         tables = self.client.materialize.get_tables()
         for table in tables:
             num_rows = self.client.materialize.get_annotation_count(table)
             # make the offset something that is not too close to the end
-            max_offset = max(num_rows - config.NUM_SYNAPSES, 0)
+            max_offset = max(num_rows - self.num_test_annotations, 0)
             offset = random.randint(0, max_offset)
 
             try:
                 df = self.client.materialize.query_table(
-                    table, offset=offset, limit=config.NUM_SYNAPSES
+                    table, offset=offset, limit=self.num_test_annotations
                 )
             except Exception as e:
                 self.send_slack_notification(f"Error in query_table: {e}")

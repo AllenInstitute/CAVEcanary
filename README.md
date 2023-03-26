@@ -26,7 +26,7 @@ pip install -r requirements.txt
 DATASTACK_NAME = "your_datastack_name"
 SLACK_API_TOKEN = "your_slack_api_token"
 SLACK_CHANNEL = "your_slack_channel"
-NUM_SYNAPSES = 100  # You can change this value to the desired number of synapses to query
+NUM_TEST_ANNOTATIONS = 100  # You can change this value to the desired number of synapses to query
 ```
 
 

@@ -27,7 +27,9 @@ class Canary:
         )
         if client is None:
             self.client = CAVEclient(
-                self.datastack_name, server_address=self.server_address
+                self.datastack_name,
+                server_address=self.server_address,
+                write_server_cache=False,
             )
         else:
             self.client = client

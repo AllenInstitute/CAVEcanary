@@ -1,6 +1,6 @@
-import time
+__version__ = "0.1.0"
+
 import random
-import pandas as pd
 from caveclient import CAVEclient
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -18,7 +18,6 @@ class Canary:
             num_rows = self.client.materialize.get_annotation_count(table)
             # make the offset something that is not too close to the end
             max_offset = max(num_rows - config.NUM_SYNAPSES, 0)
-            print(max_offset)
             offset = random.randint(0, max_offset)
 
             try:

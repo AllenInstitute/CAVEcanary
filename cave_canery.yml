@@ -5,20 +5,13 @@ metadata:
   namespace: default
 data:
   config.cfg: |
-    import os
-    import json
-    import logging
-    # Statement for enabling the development environment
-    INFOSERVICE_ENDPOINT = "https://${INFO_URL}"
-    CLIENT_DATASTACK_NAME = "${DATASTACK_NAME}"
+    [Settings]
+    DATASTACK_NAME = "${DATASTACK_NAME}"
+    SERVER_ADDRESS = "https://${GLOBAL_SERVER}"
     SLACK_API_TOKEN = "${SLACK_API_TOKEN}"
     SLACK_CHANNEL = "${SLACK_CHANNEL}"
-    NUM_TEST_ANNOTATIONS = ${NUM_TEST_ANNOTATIONS}
-    CHECK_INTERVAL = ${CHECK_INTERVAL}
-    LOGGING_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
-    LOGGING_LOCATION = '/var/log/cavecanary/cavecanary.log'
-    LOGGING_LEVEL = logging.ERROR
-
+    NUM_TEST_ANNOTATIONS = 1000
+    CHECK_INTERVAL = 60
 ---
 apiVersion: v1
 kind: Service
@@ -56,6 +49,9 @@ spec:
         - name: cavecanary-config-volume
           configMap:
             name: cavecanary-config-v${CAVECANARY_CONFIG_VERSION}
+        - name: google-cloud-key
+          secret:
+            secretName: ${PYCG_SERVICE_ACCOUNT_SECRET}
       containers:
         - name: cavecanary
           image: ${DOCKER_REPOSITORY}/cavecanary:v${CAVECANARY_VERSION}
@@ -65,6 +61,8 @@ spec:
           volumeMounts:
             - name: cavecanary-config-volume
               mountPath: /app/cavecanary/config/
+            - name: google-cloud-key
+              mountPath: /root/.cloudvolume/secrets
           env:
             - name: CAVECANARY_CONFIG_FILE
               value: /app/cavecanary/config/config.cfg

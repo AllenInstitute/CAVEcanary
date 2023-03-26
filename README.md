@@ -12,8 +12,8 @@ CAVECanary is a Python-based service that monitors a Materialization service and
 
 1. Clone this repository:
 
-git clone https://github.com/AllenInstitute/CAVEcanery.git
-cd CAVEcanery
+git clone https://github.com/AllenInstitute/CAVEcanary.git
+cd CAVEcanary
 
 2. Install the required Python packages:
 pip install -r requirements.txt

@@ -92,7 +92,7 @@ class Canary:
     def send_slack_notification(self, message):
         try:
             self.slack_client.chat_postMessage(
-                channel=config.SLACK_CHANNEL, text=message
+                channel=self.slack_channel, text=message
             )
         except SlackApiError as e:
             print(f"Error sending Slack message: {e}")

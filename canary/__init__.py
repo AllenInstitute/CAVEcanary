@@ -57,7 +57,6 @@ class Canary:
         for table in tables:
             async with async_engine.begin() as conn:
                 # specify table name
-                table_name = 'my_table'
 
                 # get a random sample of 1000 rows from the table
                 sample_query = f"SELECT * FROM {table} TABLESAMPLE BERNOULLI(10) LIMIT {self.num_test_annotations}"

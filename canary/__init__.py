@@ -1,12 +1,18 @@
 __version__ = "0.3.0"
 import time
 import random
+import os
+import asyncio
+import configparser
+
+import numpy as np
+import pandas as pd
+from sqlalchemy import Table, text, MetaData
+from sqlalchemy.ext.asyncio import create_async_engine
+
 from caveclient import CAVEclient
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-import configparser
-import os
-import numpy as np
 
 
 class Canary:
@@ -15,7 +21,7 @@ class Canary:
         self.config = configparser.ConfigParser()
         config_file = os.environ.get("CAVECANARY_CONFIG_FILE", "config.cfg")
         self.config.read(config_file)
-
+        self.database_uri = self.config.get("DATABASE_URI")
         self.datastack_name = self.config.get("Settings", "DATASTACK_NAME")
         self.server_address = self.config.get(
             "Settings", "SERVER_ADDRESS", fallback=None
@@ -39,36 +45,36 @@ class Canary:
 
     def run(self):
         while True:
-            self.check_random_annotations()
+            asyncio.run(self.check_random_annotations())
             time.sleep(self.check_interval)
 
-    def check_random_annotations(self):
-        print(self.client)
+    async def check_random_annotations(self):
+        # create engine and connect to database
+        
         tables = self.client.materialize.get_tables()
+        
+        async_engine = create_async_engine(self.database_uri)
         for table in tables:
-            num_rows = self.client.materialize.get_annotation_count(table)
-            # make the offset something that is not too close to the end
-            max_offset = max(num_rows - self.num_test_annotations, 0)
-            offset = random.randint(0, max_offset)
+            async with async_engine.begin() as conn:
+                # specify table name
+                table_name = 'my_table'
 
-            try:
-                if num_rows < 100000:
-                    df = self.client.materialize.query_table(
-                        table, offset=offset, limit=self.num_test_annotations
-                    )
-                else:
-                    df = self.client.materialize.query_table(
-                        table,
-                        filter_in_dict={
-                            "id": np.arange(offset, offset + self.num_test_annotations)
-                        },
-                    )
-            except Exception as e:
-                self.send_slack_notification(f"Error in query_table: {e}")
-                return
+                # get a random sample of 1000 rows from the table
+                sample_query = f"SELECT * FROM {table} TABLESAMPLE BERNOULLI(10) LIMIT {self.num_test_annotations}"
+                try:
+                    result = await conn.execute(text(sample_query))
+                except Exception as e:
+                    self.send_slack_notification(f"Error in query_table: {e}")
+                    return
 
-            self.check_root_ids(df)
+                    # fetch the random sample of 1000 rows as a list of dictionaries
+                rows = [dict(row) async for row in result]
+                self.check_root_ids(pd.DataFrame(rows))
 
+            # close database connection
+            await async_engine.dispose()
+
+        
     def check_root_ids(self, df):
         supervoxel_columns = [
             col for col in df.columns if col.endswith("_supervoxel_id")
@@ -101,6 +107,7 @@ class Canary:
 
     def send_slack_notification(self, message):
         try:
-            self.slack_client.chat_postMessage(channel=self.slack_channel, text=message)
+            self.slack_client.chat_postMessage(
+                channel=self.slack_channel, text=message)
         except SlackApiError as e:
             print(f"Error sending Slack message: {e}")

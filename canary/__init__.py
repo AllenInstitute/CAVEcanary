@@ -21,7 +21,7 @@ class Canary:
         self.config = configparser.ConfigParser()
         config_file = os.environ.get("CAVECANARY_CONFIG_FILE", "config.cfg")
         self.config.read(config_file)
-        self.database_uri = self.config.get("DATABASE_URI")
+        self.database_uri = self.config["DATABASE_URI"]
         self.datastack_name = self.config.get("Settings", "DATASTACK_NAME")
         self.server_address = self.config.get(
             "Settings", "SERVER_ADDRESS", fallback=None

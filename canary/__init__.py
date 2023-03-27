@@ -6,6 +6,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import configparser
 import os
+import numpy as np
 
 
 class Canary:
@@ -51,9 +52,17 @@ class Canary:
             offset = random.randint(0, max_offset)
 
             try:
-                df = self.client.materialize.query_table(
-                    table, offset=offset, limit=self.num_test_annotations
-                )
+                if num_rows < 100000:
+                    df = self.client.materialize.query_table(
+                        table, offset=offset, limit=self.num_test_annotations
+                    )
+                else:
+                    df = self.client.materialize.query_table(
+                        table,
+                        filter_in_dict={
+                            "id": np.arange(offset, offset + self.num_test_annotations)
+                        },
+                    )
             except Exception as e:
                 self.send_slack_notification(f"Error in query_table: {e}")
                 return

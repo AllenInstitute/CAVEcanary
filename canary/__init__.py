@@ -37,8 +37,9 @@ class Canary:
         self.slack_client = WebClient(token=self.slack_api_token)
 
     def run(self):
-        self.check_random_annotations()
-        time.sleep(self.check_interval)
+        while True:
+            self.check_random_annotations()
+            time.sleep(self.check_interval)
 
     def check_random_annotations(self):
         print(self.client)
@@ -91,8 +92,6 @@ class Canary:
 
     def send_slack_notification(self, message):
         try:
-            self.slack_client.chat_postMessage(
-                channel=self.slack_channel, text=message
-            )
+            self.slack_client.chat_postMessage(channel=self.slack_channel, text=message)
         except SlackApiError as e:
             print(f"Error sending Slack message: {e}")

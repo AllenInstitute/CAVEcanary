@@ -10,6 +10,7 @@ data:
     SERVER_ADDRESS = "https://${GLOBAL_SERVER}"
     SLACK_API_TOKEN = "${SLACK_API_TOKEN}"
     SLACK_CHANNEL = "${SLACK_CHANNEL}"
+    DATABASE_URI = "${SQL_DB_TYPE}+asyncpg://${POSTGRES_WRITE_USER}:${POSTGRES_WRITE_USER_PASSWORD}@127.0.0.1:3306/${SQL_ANNO_DB_NAME}"
     NUM_TEST_ANNOTATIONS = 1000
     CHECK_INTERVAL = 60
 ---
@@ -84,3 +85,22 @@ spec:
             initialDelaySeconds: 15
             timeoutSeconds: 1
             periodSeconds: 60
+        - name: cloudsql-proxy
+          image: gcr.io/cloudsql-docker/gce-proxy:1.11
+          command:
+            [
+              "/cloud_sql_proxy",
+              "-instances=${PROJECT_NAME}:${REGION}:${SQL_INSTANCE_NAME}=tcp:3306",
+              "-credential_file=/secrets/cloudsql/${GOOGLE_SECRET_FILENAME}",
+            ]
+          resources:
+            requests:
+              memory: 8Mi
+              cpu: 10m
+          securityContext:
+            runAsUser: 2 # non-root user
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: cloudsql-instance-credentials-volume
+              mountPath: /secrets/cloudsql
+              readOnly: true            

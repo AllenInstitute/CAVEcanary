@@ -11,6 +11,7 @@ def run_canary():
         canary = Canary()
         canary.run()
     except Exception as e:
+        canary.send_slack_notification(f"Canary thread crashed with exception: {e}")
         print(f"Canary thread crashed with exception: {e}")
         canary_thread_exception.set()
 

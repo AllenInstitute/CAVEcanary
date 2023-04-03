@@ -43,7 +43,6 @@ class Canary:
             time.sleep(self.check_interval)
 
     def check_random_annotations(self):
-        print(self.client)
         tables = self.client.materialize.get_tables()
         for table in tables:
             num_rows = self.client.materialize.get_annotation_count(table)

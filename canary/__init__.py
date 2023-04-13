@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 __version__ = "0.3.0"
 
+
 class Canary:
     def __init__(self, client=None, config=None, slack_client=None):
         """
@@ -146,13 +147,13 @@ class Canary:
         supervoxel_columns = [
             col for col in df.columns if col.endswith("_supervoxel_id")
         ]
-        rootid_columns = [col for col in df.columns if col.endswith("_rootid")]
+        root_id_columns = [col for col in df.columns if col.endswith("_root_id")]
         errors_found = False
         for supervoxel_col in supervoxel_columns:
             prefix = supervoxel_col[: -len("_supervoxel_id")]
-            rootid_col = f"{prefix}_rootid"
+            root_id_col = f"{prefix}_root_id"
 
-            if rootid_col not in rootid_columns:
+            if root_id_col not in root_id_columns:
                 continue
 
             try:
@@ -166,11 +167,11 @@ class Canary:
                 self.send_slack_notification(f"Error in get_roots: {e}")
                 continue
 
-            mismatch = df[rootid_col].values != root_ids
+            mismatch = df[root_id_col].values != root_ids
 
             if mismatch.any():
                 self.send_slack_notification(
-                    f"Mismatch found in {rootid_col}: {mismatch}"
+                    f"Mismatch found in {root_id_col}: {mismatch}"
                 )
                 errors_found = True
         return errors_found

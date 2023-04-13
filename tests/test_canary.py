@@ -35,7 +35,7 @@ def mock_pd_dataframe():
     data = {
         "id": [1, 2, 3],
         "pt_supervoxel_id": [1, 2, 3],
-        "pt_rootid": [100, 200, 400],
+        "pt_root_id": [100, 200, 400],
     }
     df = pd.DataFrame(data)
     # Return a MagicMock object that wraps the dataframe
@@ -131,7 +131,7 @@ def test_check_root_ids(canary_instance, mock_caveclient):
         # Case 1: Mismatch in root IDs
         data = {
             "pt_supervoxel_id": [1, 2, 3],
-            "pt_rootid": [100, 200, 400],
+            "pt_root_id": [100, 200, 400],
         }
         df1 = pd.DataFrame(data)
 
@@ -149,7 +149,7 @@ def test_check_root_ids(canary_instance, mock_caveclient):
         # Case 2: No mismatch in root IDs
         data = {
             "pt_supervoxel_id": [1, 2, 3],
-            "pt_rootid": [100, 200, 300],
+            "pt_root_id": [100, 200, 300],
         }
         df2 = pd.DataFrame(data)
 

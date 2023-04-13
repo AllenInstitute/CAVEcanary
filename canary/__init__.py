@@ -11,6 +11,7 @@ from slack_sdk.errors import SlackApiError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+__version__ = "0.3.0"
 
 class Canary:
     def __init__(self, client=None, config=None, slack_client=None):

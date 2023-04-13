@@ -1,4 +1,6 @@
 import threading
+import asyncio
+
 from flask import Flask
 from canary import Canary
 
@@ -9,7 +11,9 @@ canary_thread_exception = threading.Event()
 def run_canary():
     try:
         canary = Canary()
-        canary.run()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        asyncio.get_event_loop().run_until_complete(canary.run())
     except Exception as e:
         canary.send_slack_notification(f"Canary thread crashed with exception: {e}")
         print(f"Canary thread crashed with exception: {e}")

@@ -1,7 +1,8 @@
 import asyncio
 import configparser
 import os
-import random
+import logging
+
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import make_url
 
 __version__ = "0.3.0"
 
@@ -30,7 +32,7 @@ class Canary:
             self.config.read(config_file)
         else:
             self.config = config
-        self.database_uri = self.config.get("SETTINGS", "DATABASE_URI")
+        self.default_uri = self.config.get("SETTINGS", "DATABASE_URI")
         self.datastack_name = self.config.get("SETTINGS", "DATASTACK_NAME")
         self.server_address = self.config.get(
             "SETTINGS", "SERVER_ADDRESS", fallback=None
@@ -48,6 +50,9 @@ class Canary:
             )
         else:
             self.client = client
+
+        self.database_uri = self._create_latest_version_db_uri()
+
         self.datastack_info = self.client.info.get_datastack_info(self.datastack_name)
         if slack_client is None:
             self.slack_client = WebClient(token=self.slack_api_token)
@@ -56,6 +61,11 @@ class Canary:
         self.segmentation_source = self.datastack_info["segmentation_source"].split(
             "/"
         )[-1]
+
+    def _create_latest_version_db_uri(self):
+        latest_version = max(self.client.materialize.get_versions())
+        sql_base_uri = self.default_uri.rpartition("/")[0]
+        return make_url(f"{sql_base_uri}/{self.datastack_name}__mat{latest_version}")
 
     async def run(self, iterations=None):
         """
@@ -78,8 +88,16 @@ class Canary:
             if loop and loop.is_running():
                 task = loop.create_task(self.check_random_annotations())
                 background_tasks.add(task)
-                await task
-                task.add_done_callback(background_tasks.discard)
+                try:
+                    await task
+                    task.add_done_callback(background_tasks.discard)
+                except Exception as error:
+                    logging.error(f"Error: {error}. Retrying task in next iteration.")
+                    background_tasks.remove(task)
+                    self.database_uri = self._create_latest_version_db_uri()
+                    new_task = loop.create_task(self.check_random_annotations())
+                    background_tasks.add(new_task)
+                    new_task.add_done_callback(background_tasks.discard)
             else:
                 asyncio.run(self.check_random_annotations())
             await asyncio.sleep(self.check_interval)
@@ -99,6 +117,7 @@ class Canary:
             if not version_info["is_merged"] and table_info.get("annotation_table"):
                 table_name = f"{table_name}__{self.segmentation_source}"
             elif not version_info["is_merged"]:
+                logging.debug(f"Skipping {table_name}, no segmentation data")
                 continue
 
             has_error = await self.query_data_and_check_roots(async_engine, table_name)
@@ -127,14 +146,17 @@ class Canary:
                 raise (e)
 
             df = pd.DataFrame(result)
-
-            has_error = self.check_root_ids(df)
-
-            # close database connection
+            if not df.empty:
+                logging.debug(f"Table name {table_name}")
+                has_error = self.check_root_ids(df, table_name)
+                logging.debug(f"ERROR FOUND? {has_error}")
+            else:
+                has_error = False
+        # close database connection
         await async_engine.dispose()
         return has_error
 
-    def check_root_ids(self, df):
+    def check_root_ids(self, df, table_name: str):
         """
         Checks the root IDs in the specified DataFrame.
 
@@ -157,26 +179,53 @@ class Canary:
                 continue
 
             try:
+                timestamp = self.client.materialize.get_version_metadata()["time_stamp"]
                 root_ids = self.client.chunkedgraph.get_roots(
                     df[supervoxel_col].values,
-                    timestamp=self.client.materialize.get_version_metadata()[
-                        "time_stamp"
-                    ],
+                    timestamp=timestamp,
                 )
             except Exception as e:
                 self.send_slack_notification(f"Error in get_roots: {e}")
+                logging.error(e)
                 continue
 
             mismatch = df[root_id_col].values != root_ids
 
             if mismatch.any():
-                self.send_slack_notification(
-                    f"Mismatch found in {root_id_col}: {mismatch}"
-                )
+                bad_root_id_rows = df[mismatch]
+                chunkgraph_root_id_values = root_ids[mismatch]
+                formatted_bad_db_rows = bad_root_id_rows[["id", root_id_col]]
+                mismatch_message = f"MISMATCHED DB ROWS:\n{formatted_bad_db_rows}\nVALID CHUNKGRAPH VALUES:\n{chunkgraph_root_id_values}"
+                logging.debug(mismatch_message)
+
+                slack_block_msg = [
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": "Mismatch Found"},
+                    },
+                    {"type": "divider"},
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f">Database: minnie65_phase3_v1__mat668 \n>Table: {table_name}\n>Lookup timestamp: {str(timestamp)}",
+                        },
+                    },
+                    {"type": "divider"},
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": mismatch_message,
+                        },
+                    },
+                ]
+
+                self.send_slack_notification(message=None, blocks=slack_block_msg)
                 errors_found = True
         return errors_found
 
-    def send_slack_notification(self, message):
+    def send_slack_notification(self, message=None, blocks=None):
         """
         Sends a Slack notification with the specified message.
 
@@ -184,9 +233,11 @@ class Canary:
             message (str): The message to send.
         """
         try:
-            self.slack_client.chat_postMessage(channel=self.slack_channel, text=message)
+            self.slack_client.chat_postMessage(
+                channel=self.slack_channel, text=message, blocks=blocks
+            )
         except SlackApiError as e:
-            print(f"Error sending Slack message: {e}")
+            logging.error(f"Error sending Slack message: {e}")
 
 
 if __name__ == "__main__":

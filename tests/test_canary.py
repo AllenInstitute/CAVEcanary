@@ -16,7 +16,7 @@ def mock_caveclient():
     mock_caveclient = MagicMock()
     mock_caveclient.materialize.get_tables.return_value = ["example_table"]
     mock_caveclient.materialize.get_version_metadata.return_value = {"is_merged": False}
-    mock_caveclient.materialize.materialize.get_versions.return_value = 1
+    mock_caveclient.materialize.materialize.get_versions.return_value = [1, 2, 3]
     mock_caveclient.materialize.get_table_metadata.return_value = {
         "annotation_table": True,
         "time_stamp": str(datetime.datetime.utcnow()),

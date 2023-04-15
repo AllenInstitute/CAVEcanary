@@ -55,7 +55,15 @@ def canary_instance(mock_caveclient, mock_slack_client):
     config_path = pathlib.Path(__file__).parent.absolute() / "test_config.cfg"
     config = configparser.ConfigParser()
     config.read(config_path)
-    return Canary(client=mock_caveclient, config=config, slack_client=mock_slack_client)
+    with patch.object(
+        Canary,
+        "_create_latest_version_db_uri",
+        return_value=config["SETTINGS"]["DATABASE_URI"],
+    ):
+        canary = Canary(
+            client=mock_caveclient, config=config, slack_client=mock_slack_client
+        )
+    return canary
 
 
 @pytest.fixture
@@ -69,10 +77,14 @@ def test_canary_init(mock_caveclient, mock_slack_client):
     config_path = pathlib.Path(__file__).parent.absolute() / "test_config.cfg"
     config = configparser.ConfigParser()
     config.read(config_path)
-    canary = Canary(
-        client=mock_caveclient, config=config, slack_client=mock_slack_client
-    )
-
+    with patch.object(
+        Canary,
+        "_create_latest_version_db_uri",
+        return_value=config["SETTINGS"]["DATABASE_URI"],
+    ):
+        canary = Canary(
+            client=mock_caveclient, config=config, slack_client=mock_slack_client
+        )
     assert canary.client == mock_caveclient
     assert canary.slack_client == mock_slack_client
     assert canary.config == config
@@ -131,6 +143,7 @@ def test_check_root_ids(canary_instance, mock_caveclient):
 
         # Case 1: Mismatch in root IDs
         data = {
+            "id": [1, 2, 3],
             "pt_supervoxel_id": [1, 2, 3],
             "pt_root_id": [100, 200, 400],
         }
@@ -139,7 +152,7 @@ def test_check_root_ids(canary_instance, mock_caveclient):
         # Mock the send_slack_notification method to prevent actual Slack messages
         canary_instance.send_slack_notification = MagicMock()
 
-        result1 = canary_instance.check_root_ids(df1)
+        result1 = canary_instance.check_root_ids(df1, "example_table")
 
         assert result1 is True
         canary_instance.send_slack_notification.assert_called_once()
@@ -149,12 +162,13 @@ def test_check_root_ids(canary_instance, mock_caveclient):
 
         # Case 2: No mismatch in root IDs
         data = {
+            "id": [1, 2, 3],
             "pt_supervoxel_id": [1, 2, 3],
             "pt_root_id": [100, 200, 300],
         }
         df2 = pd.DataFrame(data)
 
-        result2 = canary_instance.check_root_ids(df2)
+        result2 = canary_instance.check_root_ids(df2, "example_table")
 
         assert result2 is False
         canary_instance.send_slack_notification.assert_not_called()

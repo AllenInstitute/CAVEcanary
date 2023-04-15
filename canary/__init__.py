@@ -64,6 +64,9 @@ class Canary:
 
     def _create_latest_version_db_uri(self):
         latest_version = max(self.client.materialize.get_versions())
+        self.client.materialize.version = (
+            latest_version  # make client set to latest version on error
+        )
         sql_base_uri = self.default_uri.rpartition("/")[0]
         return make_url(f"{sql_base_uri}/{self.datastack_name}__mat{latest_version}")
 

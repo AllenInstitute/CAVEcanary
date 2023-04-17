@@ -1,97 +1,186 @@
-import unittest
-from unittest.mock import MagicMock, patch
-import pandas as pd
+import configparser
+import datetime
+import pathlib
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import numpy as np
+import pandas as pd
+import pytest
+from sqlalchemy.ext.asyncio import create_async_engine
+
 from canary import Canary
-import os
-
-os.environ["CAVECANARY_CONFIG_FILE"] = "tests/test_config.cfg"
 
 
-class TestCanary(unittest.TestCase):
-    @patch("caveclient.CAVEclient")
-    @patch("slack_sdk.WebClient")
-    def setUp(self, mock_slack_client, mock_cave_client):
-        
-        # Mock client.info.get_datastack_info with test values
-        mock_datastack_info = {
-            "soma_table": "test_nucleus_neuron_svm",
-            "description": "Test datastack description.",
-            "aligned_volume": {
-                "image_source": "precomputed://https://test-bossdb-open-data.s3.amazonaws.com/test/minnie/em",
-                "description": "Test aligned volume description.",
-                "id": 1,
-                "name": "test_minnie65_phase3",
-            },
-            "viewer_site": "https://test-neuroglancer.neuvue.io/",
-            "analysis_database": None,
-            "viewer_resolution_y": 4.0,
-            "viewer_resolution_z": 40.0,
-            "synapse_table": "test_synapses_pni_2",
-            "local_server": "https://test.minnie.microns-daf.com",
-            "viewer_resolution_x": 4.0,
-            "segmentation_source": "graphene://https://test.minnie.microns-daf.com/segmentation/table/test_minnie3_v1",
-        }
+@pytest.fixture
+def mock_caveclient():
+    mock_caveclient = MagicMock()
+    mock_caveclient.materialize.get_tables.return_value = ["example_table"]
+    mock_caveclient.materialize.get_version_metadata.return_value = {"is_merged": False}
+    mock_caveclient.materialize.materialize.get_versions.return_value = [1, 2, 3]
+    mock_caveclient.materialize.get_table_metadata.return_value = {
+        "annotation_table": True,
+        "time_stamp": str(datetime.datetime.utcnow()),
+    }
+    mock_caveclient.materialize.get_annotation_count.return_value = 100
+    mock_caveclient.materialize.query_table.return_value = pd.DataFrame()
+    mock_caveclient.chunkedgraph.get_roots.return_value = np.array([100, 200, 300])
+    mock_caveclient.info.get_datastack_info.return_value = {
+        "segmentation_source": "example_segmentation_source"
+    }
+    yield mock_caveclient
 
-        mock_cave_client.info.get_datastack_info.return_value = mock_datastack_info
-        self.canary = Canary(client=mock_cave_client)
-        self.canary.client = mock_cave_client
-        self.canary.slack_client = mock_slack_client
 
-    def test_matching_root_ids(self):
-        # Mock table metadata and DataFrame with matching root IDs
-        self.canary.client.materialize.get_tables.return_value = ["test_table"]
-        self.canary.client.materialize.get_annotation_count.return_value = 10
-        data = {
-            "pre_supervoxel_id": [1, 2, 3],
-            "pre_rootid": [11, 22, 33],
-            "post_supervoxel_id": [4, 5, 6],
-            "post_rootid": [44, 55, 66],
-        }
-        df = pd.DataFrame(data)
-        self.canary.client.materialize.query_table.return_value = df
-        self.canary.client.chunkedgraph.get_roots.side_effect = (
-            lambda x, **kwargs: np.array([11, 22, 33])
-            if x[0] == 1
-            else np.array([44, 55, 66])
+@pytest.fixture
+def mock_pd_dataframe():
+    # Create a mock dataframe with some test data
+    data = {
+        "id": [1, 2, 3],
+        "pt_supervoxel_id": [1, 2, 3],
+        "pt_root_id": [100, 200, 400],
+    }
+    df = pd.DataFrame(data)
+    # Return a MagicMock object that wraps the dataframe
+    return MagicMock(wraps=df)
+
+
+@pytest.fixture
+def mock_slack_client():
+    mock_slack_client = MagicMock()
+    mock_slack_client.chat_postMessage.return_value = None
+    return mock_slack_client
+
+
+@pytest.fixture
+def canary_instance(mock_caveclient, mock_slack_client):
+    config_path = pathlib.Path(__file__).parent.absolute() / "test_config.cfg"
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    with patch.object(
+        Canary,
+        "_create_latest_version_db_uri",
+        return_value=config["SETTINGS"]["DATABASE_URI"],
+    ):
+        canary = Canary(
+            client=mock_caveclient, config=config, slack_client=mock_slack_client
         )
+    return canary
 
-        self.canary.check_random_annotations()
 
-        self.canary.slack_client.chat_postMessage.assert_not_called()
+@pytest.fixture
+def mock_async_engine():
+    mock_async_engine = MagicMock()
+    mock_async_engine.begin.return_value.__aenter__.return_value = mock_async_engine
+    return mock_async_engine
 
-    def test_non_matching_root_ids(self):
-        # Mock table metadata and DataFrame with non-matching root IDs
-        self.canary.client.materialize.get_tables.return_value = ["test_table"]
-        self.canary.client.materialize.get_annotation_count.return_value = 10
-        data = {
-            "pre_supervoxel_id": [1, 2, 3],
-            "pre_rootid": [11, 22, 33],
-            "post_supervoxel_id": [4, 5, 6],
-            "post_rootid": [44, 55, 99],  # Non-matching root ID
-        }
-        df = pd.DataFrame(data)
-        self.canary.client.materialize.query_table.return_value = df
-        self.canary.client.chunkedgraph.get_roots.side_effect = (
-            lambda x, **kwargs: np.array([11, 22, 33])
-            if x[0] == 1
-            else np.array([44, 55, 66])
+
+def test_canary_init(mock_caveclient, mock_slack_client):
+    config_path = pathlib.Path(__file__).parent.absolute() / "test_config.cfg"
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    with patch.object(
+        Canary,
+        "_create_latest_version_db_uri",
+        return_value=config["SETTINGS"]["DATABASE_URI"],
+    ):
+        canary = Canary(
+            client=mock_caveclient, config=config, slack_client=mock_slack_client
         )
-
-        self.canary.check_random_annotations()
-
-        self.canary.slack_client.chat_postMessage.assert_called_once()
-
-    def test_http_error(self):
-        # Mock table metadata and simulate HTTP error
-        self.canary.client.materialize.get_tables.return_value = ["test_table"]
-        self.canary.client.materialize.get_annotation_count.return_value = 10
-        self.canary.client.materialize.query_table.side_effect = Exception("HTTP Error")
-
-        self.canary.check_random_annotations()
-
-        self.canary.slack_client.chat_postMessage.assert_called_once()
+    assert canary.client == mock_caveclient
+    assert canary.slack_client == mock_slack_client
+    assert canary.config == config
+    assert canary.database_uri == config["SETTINGS"]["DATABASE_URI"]
+    assert canary.datastack_name == config["SETTINGS"]["DATASTACK_NAME"]
+    assert canary.server_address == config["SETTINGS"]["SERVER_ADDRESS"]
+    assert canary.slack_api_token == config["SETTINGS"]["SLACK_API_TOKEN"]
+    assert canary.slack_channel == config["SETTINGS"]["SLACK_CHANNEL"]
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.mark.asyncio
+async def test_check_random_annotations(
+    canary_instance, mock_caveclient, mock_async_engine
+):
+    # Configure the mocked CAVEclient and async engine behavior
+    mock_caveclient.materialize.get_tables.return_value = ["example_table"]
+    mock_caveclient.materialize.get_version_metadata.return_value = {"is_merged": False}
+    mock_caveclient.materialize.get_table_metadata.return_value = {
+        "annotation_table": True
+    }
+    canary_instance.query_data_and_check_roots = AsyncMock(return_value=False)
+    # Patch the create_async_engine function to return a new mocked async engine
+    with patch(
+        "sqlalchemy.ext.asyncio.create_async_engine"
+    ) as mock_create_async_engine:
+        mock_async_engine = MagicMock(
+            spec=create_async_engine(canary_instance.database_uri)
+        )
+        mock_create_async_engine.return_value = mock_async_engine
+
+        # Run the method and capture the result
+        result = await canary_instance.check_random_annotations()
+
+    # Check if the method returned the expected result
+    assert result is False
+
+    # Check if the query_data_and_check_roots method was called with the expected arguments
+    expected_async_engine = mock_create_async_engine.return_value
+    (
+        actual_async_engine,
+        actual_table_name,
+    ) = canary_instance.query_data_and_check_roots.call_args[0]
+
+    assert actual_table_name == f"example_table__{canary_instance.segmentation_source}"
+
+
+def test_check_root_ids(canary_instance, mock_caveclient):
+    # Mock the CAVEclient behavior
+    mock_caveclient.chunkedgraph.get_roots.return_value = np.array([100, 200, 300])
+
+    # Patch the get_version_metadata method to return a fixed timestamp
+    with patch.object(
+        canary_instance.client.materialize, "get_version_metadata"
+    ) as mock_get_version_metadata:
+        mock_get_version_metadata.return_value = {"time_stamp": 1234567890}
+
+        # Case 1: Mismatch in root IDs
+        data = {
+            "id": [1, 2, 3],
+            "pt_supervoxel_id": [1, 2, 3],
+            "pt_root_id": [100, 200, 400],
+        }
+        df1 = pd.DataFrame(data)
+
+        # Mock the send_slack_notification method to prevent actual Slack messages
+        canary_instance.send_slack_notification = MagicMock()
+
+        result1 = canary_instance.check_root_ids(df1, "example_table")
+
+        assert result1 is True
+        canary_instance.send_slack_notification.assert_called_once()
+
+        # Reset the mock for the next case
+        canary_instance.send_slack_notification.reset_mock()
+
+        # Case 2: No mismatch in root IDs
+        data = {
+            "id": [1, 2, 3],
+            "pt_supervoxel_id": [1, 2, 3],
+            "pt_root_id": [100, 200, 300],
+        }
+        df2 = pd.DataFrame(data)
+
+        result2 = canary_instance.check_root_ids(df2, "example_table")
+
+        assert result2 is False
+        canary_instance.send_slack_notification.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_canary_run(canary_instance):
+    # Mock the check_random_annotations method to prevent actual execution
+    canary_instance.check_random_annotations = AsyncMock(return_value=None)
+
+    # Run the method with a single iteration for testing purposes
+    await canary_instance.run(iterations=1)
+
+    # Check if the check_random_annotations method was called once
+    canary_instance.check_random_annotations.assert_called_once()

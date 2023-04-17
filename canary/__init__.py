@@ -211,7 +211,7 @@ class Canary:
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f">Database: minnie65_phase3_v1__mat668 \n>Table: {table_name}\n>Lookup timestamp: {str(timestamp)}",
+                            "text": f">Database: {self.database_uri.database} \n>Table: {table_name}\n>Lookup timestamp: {str(timestamp)}",
                         },
                     },
                     {"type": "divider"},

@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.engine.url import make_url
 
 from canary import Canary
 
@@ -58,7 +59,7 @@ def canary_instance(mock_caveclient, mock_slack_client):
     with patch.object(
         Canary,
         "_create_latest_version_db_uri",
-        return_value=config["SETTINGS"]["DATABASE_URI"],
+        return_value=make_url(config["SETTINGS"]["DATABASE_URI"]),
     ):
         canary = Canary(
             client=mock_caveclient, config=config, slack_client=mock_slack_client

@@ -11,7 +11,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy import make_url
+from sqlalchemy.engine.url import make_url
 
 __version__ = "0.4.2"
 

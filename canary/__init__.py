@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import make_url
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 
 class Canary:

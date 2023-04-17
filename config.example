@@ -1,4 +1,4 @@
-[Settings]
+[SETTINGS]
 DATASTACK_NAME = dummy_datastack
 SERVER_ADDRESS = "https://dummy_server_address"
 SLACK_API_TOKEN = dummy_slack_api_token

@@ -5,7 +5,7 @@ metadata:
   namespace: default
 data:
   config.cfg: |
-    [Settings]
+    [SETTINGS]
     DATASTACK_NAME = "${DATASTACK_NAME}"
     SERVER_ADDRESS = "https://${GLOBAL_SERVER}"
     SLACK_API_TOKEN = "${SLACK_API_TOKEN}"
@@ -103,4 +103,4 @@ spec:
           volumeMounts:
             - name: cloudsql-instance-credentials-volume
               mountPath: /secrets/cloudsql
-              readOnly: true            
+              readOnly: true

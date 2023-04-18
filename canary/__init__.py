@@ -141,7 +141,7 @@ class Canary:
             bool: `True` if an error was found; `False` otherwise.
         """
         async with async_engine.begin() as conn:
-            sample_query = f"SELECT * FROM {table_name} TABLESAMPLE BERNOULLI({sample_percent}) LIMIT {self.num_test_annotations}"
+            sample_query = f"SELECT * FROM {table_name} TABLESAMPLE system ({sample_percent}) where random()<0.01 limit {self.num_test_annotations}"
 
             try:
                 result = await conn.execute(text(sample_query))

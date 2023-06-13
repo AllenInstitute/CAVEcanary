@@ -275,10 +275,9 @@ class Canary:
             message (str): The message to send.
         """
         try:
-            # self.slack_client.chat_postMessage(
-            #     channel=self.slack_channel, text=message, blocks=blocks
-            # )
-            print(f"Slack Message: {message}")
+            self.slack_client.chat_postMessage(
+                channel=self.slack_channel, text=message, blocks=blocks
+            )
         except SlackApiError as e:
             logging.error(f"Error sending Slack message: {e}")
 

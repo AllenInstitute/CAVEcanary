@@ -3,7 +3,6 @@ import configparser
 import os
 import logging
 
-
 import numpy as np
 import pandas as pd
 from caveclient import CAVEclient
@@ -39,6 +38,10 @@ class Canary:
         )
         self.slack_api_token = self.config.get("SETTINGS", "SLACK_API_TOKEN")
         self.slack_channel = self.config.get("SETTINGS", "SLACK_CHANNEL")
+        self.use_tsm_system_rows_extension = self.config.get(
+            "SETTINGS", "USE_TSM_SYSTEM_ROWS", fallback=False
+        )
+
         self.check_interval = self.config.getint("SETTINGS", "CHECK_INTERVAL")
         self.num_test_annotations = self.config.getint(
             "SETTINGS", "NUM_TEST_ANNOTATIONS"
@@ -62,6 +65,33 @@ class Canary:
             "/"
         )[-1]
 
+    async def check_if_extension_is_installed(
+        self, extension_name: str = "tsm_system_rows"
+    ):
+        # check if postgresql extension is installed on database
+        async_engine = create_async_engine(self.database_uri)
+        async with async_engine.begin() as conn:
+            get_extension_query = (
+                f"SELECT * FROM pg_extension WHERE extname = '{extension_name}';"
+            )
+            result = await conn.execute(text(get_extension_query))
+            extension_results = result.fetchone()
+            logging.debug(extension_results)
+            if not extension_results:
+                try:
+                    result = await conn.execute(
+                        text(f"CREATE EXTENSION {extension_name};")
+                    )
+                    logging.debug(result.fetchone())
+                    logging.debug(f"Created extension {extension_name}")
+                except Exception as e:
+                    logging.error(f"Failed to create extension tsm_system_rows: {e}")
+                    return False
+            else:
+                logging.debug(f"Extension {extension_name} already exists")
+        await async_engine.dispose()
+        return True
+
     def _create_latest_version_db_uri(self):
         latest_version = max(self.client.materialize.get_versions())
         self.client.materialize.version = (
@@ -70,7 +100,7 @@ class Canary:
         sql_base_uri = self.default_uri.rpartition("/")[0]
         return make_url(f"{sql_base_uri}/{self.datastack_name}__mat{latest_version}")
 
-    async def run(self, iterations=None):
+    async def run(self, iterations=None, use_tsm_system_rows_extension=False):
         """
         Runs the Canary.
 
@@ -78,56 +108,59 @@ class Canary:
             iterations (int, optional): The number of iterations to run. Defaults to `None`.
         """
         iteration_count = 0
-        background_tasks = set()
+        background_tasks = []
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
+
+        if use_tsm_system_rows_extension:
+            # check if postgresql extension is installed on database
+            await self.check_if_extension_is_installed(extension_name="tsm_system_rows")
+
+        annotation_tables = self.client.materialize.get_tables()
+        version_info = self.client.materialize.get_version_metadata()
 
         while True:
             if iterations is not None and iteration_count >= iterations:
                 break
             # check if event loop is running and add as task else run with eventloop
             if loop and loop.is_running():
-                task = loop.create_task(self.check_random_annotations())
-                background_tasks.add(task)
+                for table_name in annotation_tables:
+                    task = loop.create_task(
+                        self.check_random_annotations(table_name, version_info)
+                    )
+                    background_tasks.append(task)
                 try:
-                    await task
-                    task.add_done_callback(background_tasks.discard)
+                    await asyncio.gather(*background_tasks)
                 except Exception as error:
                     logging.error(f"Error: {error}. Retrying task in next iteration.")
-                    background_tasks.remove(task)
-                    self.database_uri = self._create_latest_version_db_uri()
-                    new_task = loop.create_task(self.check_random_annotations())
-                    background_tasks.add(new_task)
-                    new_task.add_done_callback(background_tasks.discard)
-            else:
-                asyncio.run(self.check_random_annotations())
+
+            background_tasks = []
+
             await asyncio.sleep(self.check_interval)
 
             iteration_count += 1
 
-    async def check_random_annotations(self):
+    async def check_random_annotations(self, table_name: str, version_info: dict):
         """
         Checks the specified random annotations.
         """
-        annotation_tables = self.client.materialize.get_tables()
-        version_info = self.client.materialize.get_version_metadata()
-
         async_engine = create_async_engine(self.database_uri)
-        for table_name in annotation_tables:
-            table_info = self.client.materialize.get_table_metadata(table_name)
-            if not version_info["is_merged"] and table_info.get("annotation_table"):
+        table_info = self.client.materialize.get_table_metadata(table_name)
+        if not version_info["is_merged"]:
+            if table_info.get("annotation_table"):
                 table_name = f"{table_name}__{self.segmentation_source}"
-            elif not version_info["is_merged"]:
+            else:
                 logging.debug(f"Skipping {table_name}, no segmentation data")
-                continue
-
-            has_error = await self.query_data_and_check_roots(async_engine, table_name)
-        return has_error
+        return await self.query_data_and_check_roots(async_engine, table_name)
 
     async def query_data_and_check_roots(
-        self, async_engine, table_name, sample_percent=10
+        self,
+        async_engine,
+        table_name: str,
+        sample_percent: int = 10,
+        use_tsm_system_rows_extension: bool = False,
     ):
         """
         Queries the specified data and checks the roots.
@@ -141,17 +174,23 @@ class Canary:
             bool: `True` if an error was found; `False` otherwise.
         """
         async with async_engine.begin() as conn:
-            sample_query = f"SELECT * FROM {table_name} TABLESAMPLE system ({sample_percent}) WHERE random()<0.01 LIMIT {self.num_test_annotations}"
-
+            sample_query = (
+                f"SELECT * FROM {table_name} TABLESAMPLE SYSTEM_ROWS({self.num_test_annotations})"
+                if use_tsm_system_rows_extension
+                else f"SELECT * FROM {table_name} TABLESAMPLE system ({sample_percent}) WHERE random()<0.01 LIMIT {self.num_test_annotations}"
+            )
             try:
                 result = await conn.execute(text(sample_query))
             except Exception as e:
                 raise (e)
 
             df = pd.DataFrame(result)
+
             if not df.empty:
-                logging.debug(f"Table name {table_name}")
                 has_error = self.check_root_ids(df, table_name)
+                logging.debug(f"TABLE NAME: {table_name}")
+                logging.debug("USING SYSTEM_ROWS:{use_tsm_system_rows_extension}")
+                logging.debug(df.id.describe())
                 logging.debug(f"ERROR FOUND? {has_error}")
             else:
                 has_error = False
@@ -188,7 +227,7 @@ class Canary:
                     timestamp=timestamp,
                 )
             except Exception as e:
-                self.send_slack_notification(f"Error in get_roots: {e}")
+                # self.send_slack_notification(f"Error in get_roots: {e}")
                 logging.error(e)
                 continue
 
@@ -236,9 +275,10 @@ class Canary:
             message (str): The message to send.
         """
         try:
-            self.slack_client.chat_postMessage(
-                channel=self.slack_channel, text=message, blocks=blocks
-            )
+            # self.slack_client.chat_postMessage(
+            #     channel=self.slack_channel, text=message, blocks=blocks
+            # )
+            print(f"Slack Message: {message}")
         except SlackApiError as e:
             logging.error(f"Error sending Slack message: {e}")
 

@@ -6,3 +6,4 @@ SLACK_CHANNEL = dummy_slack_channel
 NUM_TEST_ANNOTATIONS = 100
 CHECK_INTERVAL = 60
 DATABASE_URI = "postgresql+asyncpg://postgres:password@localhost:5432/database"
+USE_TSM_SYSTEM_ROWS=False

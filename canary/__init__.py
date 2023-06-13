@@ -160,7 +160,6 @@ class Canary:
         async_engine,
         table_name: str,
         sample_percent: int = 10,
-        use_tsm_system_rows_extension: bool = False,
     ):
         """
         Queries the specified data and checks the roots.
@@ -176,7 +175,7 @@ class Canary:
         async with async_engine.begin() as conn:
             sample_query = (
                 f"SELECT * FROM {table_name} TABLESAMPLE SYSTEM_ROWS({self.num_test_annotations})"
-                if use_tsm_system_rows_extension
+                if self.use_tsm_system_rows_extension
                 else f"SELECT * FROM {table_name} TABLESAMPLE system ({sample_percent}) WHERE random()<0.01 LIMIT {self.num_test_annotations}"
             )
             try:
@@ -189,7 +188,7 @@ class Canary:
             if not df.empty:
                 has_error = self.check_root_ids(df, table_name)
                 logging.debug(f"TABLE NAME: {table_name}")
-                logging.debug(f"USING SYSTEM_ROWS:{use_tsm_system_rows_extension}")
+                logging.debug(f"USING SYSTEM_ROWS:{self.use_tsm_system_rows_extension}")
                 logging.debug(df.id.describe())
                 logging.debug(f"ERROR FOUND? {has_error}")
             else:

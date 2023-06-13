@@ -227,7 +227,7 @@ class Canary:
                     timestamp=timestamp,
                 )
             except Exception as e:
-                # self.send_slack_notification(f"Error in get_roots: {e}")
+                self.send_slack_notification(f"Error in get_roots: {e}")
                 logging.error(e)
                 continue
 

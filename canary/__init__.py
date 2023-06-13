@@ -114,7 +114,7 @@ class Canary:
         except RuntimeError:
             loop = None
 
-        if use_tsm_system_rows_extension:
+        if self.use_tsm_system_rows_extension:
             # check if postgresql extension is installed on database
             await self.check_if_extension_is_installed(extension_name="tsm_system_rows")
 
@@ -189,7 +189,7 @@ class Canary:
             if not df.empty:
                 has_error = self.check_root_ids(df, table_name)
                 logging.debug(f"TABLE NAME: {table_name}")
-                logging.debug("USING SYSTEM_ROWS:{use_tsm_system_rows_extension}")
+                logging.debug(f"USING SYSTEM_ROWS:{use_tsm_system_rows_extension}")
                 logging.debug(df.id.describe())
                 logging.debug(f"ERROR FOUND? {has_error}")
             else:

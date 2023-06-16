@@ -117,7 +117,7 @@ async def test_check_random_annotations(
         mock_create_async_engine.return_value = mock_async_engine
 
         # Run the method and capture the result
-        result = await canary_instance.check_random_annotations()
+        result = await canary_instance.check_random_annotations(table_name="example_table", version_info={"is_merged": False})
 
     # Check if the method returned the expected result
     assert result is False

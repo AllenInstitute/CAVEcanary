@@ -19,14 +19,19 @@ cd CAVEcanary
 pip install -r requirements.txt
 
 
-3. Set up the configuration by creating a `config.py` file with the following content:
+3. Set up the configuration by creating a `config.cfg` file with the following content:
 
 ```python
 
+[SETTINGS]
 DATASTACK_NAME = "your_datastack_name"
+SERVER_ADDRESS = "your_global_cave_server_address"
+DATABASE_URI = "postgresql+asyncpg://your_database_user_and_password/database_name" # Note: postgresql+asyncpg driver required
 SLACK_API_TOKEN = "your_slack_api_token"
 SLACK_CHANNEL = "your_slack_channel"
-NUM_TEST_ANNOTATIONS = 100  # You can change this value to the desired number of synapses to query
+NUM_TEST_ANNOTATIONS = 100  # You can change this value to the desired number of synapses to query"
+CHECK_INTERVAL = 60 # Number of seconds to run check
+USE_TSM_SYSTEM_ROWS = True # Use postgres 'TSM_SYSTEM_ROWS' extension to randomly sample rows
 ```
 
 
